@@ -1,0 +1,72 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model User {
+  id    String     @id @default(uuid())
+  email String  @unique
+  username  String @unique
+  passwordHash String 
+  createdAt DateTime @default(now())
+  //Relationships 
+  channelsOwned Channel[] @relation("ChannelOwner")
+  channelMemberships ChannelMember[] 
+  sentRequests Friendship[] @relation("SentRequests")
+  receivedRequests Friendship[] @relation("ReceivedRequests")
+}
+
+model Friendship {
+  id String @id @default(uuid())
+  senderId String
+  receiverId String
+  status FriendshipStatus @default(PENDING) //PENDING, ACCEPTED, REJECTED
+  createdAt DateTime @default(now())
+
+//Relationships
+  sender User @relation("SentRequests", fields: [senderId], references: [id],onDelete:Cascade)
+  receiver User @relation("ReceivedRequests", fields: [receiverId], references: [id] , onDelete:Cascade)
+
+  @@unique([senderId, receiverId])
+}
+
+
+model Channel {
+  id String @id @default(uuid())
+  name String?
+  isGroup Boolean @default(false)
+  ownerId String
+  lastMessage String?
+  lastMessageAt DateTime?
+  createdAt DateTime @default(now())
+  
+  owner User @relation("ChannelOwner", fields: [ownerId], references: [id])
+  members ChannelMember[]   
+}
+
+model ChannelMember {
+  id String @id @default(uuid())
+  channelId String
+  userId String
+  lastReadAt DateTime?
+  joinedAt DateTime @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+ }
