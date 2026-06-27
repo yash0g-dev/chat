@@ -14,7 +14,7 @@ export interface Message {
   channelId: string;
   content: string;
   attachments?: Attachment[];
-  status?: "sending" | "sent" | "delivered" | "read";
+  status?: "sending" | "failed" | "sent" | "delivered" | "read";
   createdAt: string;
   sender: {
     id: string;
@@ -101,13 +101,26 @@ export const createDirectChat = createAsyncThunk(
 // 3. Create Group Chat
 export const createGroupChat = createAsyncThunk(
   "chat/createGroupChat",
-  async (payload: { name: string; members: string[] }, { rejectWithValue }) => {
+  async (
+    { name, members }: { name: string; members: string[] },
+    { rejectWithValue },
+  ) => {
     try {
-      const response = await api.post("/chat/create-group-chat", payload);
-      return response.data.channel as Chat;
-    } catch (error: any) {
+      // Hits your backend route mapped to your createGroupChannel controller
+      const response = await api.post("/chat/create-group", { name, members });
+
+      const rawChannel = response.data.channel;
+      return {
+        id: rawChannel.id,
+        isGroup: rawChannel.isGroup,
+        name: rawChannel.name,
+        ownerId: rawChannel.ownerId,
+        members: rawChannel.members,
+        createdAt: rawChannel.createdAt,
+      };
+    } catch (err: any) {
       return rejectWithValue(
-        error.response?.data?.message || "Failed to create group chat",
+        err.response?.data?.message || "Failed to establish group room setup",
       );
     }
   },
@@ -205,7 +218,7 @@ const chatSlice = createSlice({
       }
     },
 
-    // NEW: Update read/delivered status for a batch of messages
+    //Update read/delivered status for a batch of messages
     updateMessagesStatus: (
       state,
       action: PayloadAction<{
@@ -217,13 +230,28 @@ const chatSlice = createSlice({
       const { channelId, messageIds, status } = action.payload;
       const messages = state.messagesByChat[channelId];
       if (messages) {
+        const ids = new Set(messageIds);
+
         messages.forEach((msg) => {
-          // Check against both MongoDB _id and temporary id
-          const idToCheck = msg._id || msg.id;
-          if (idToCheck && messageIds.includes(idToCheck)) {
+          const id = msg._id || msg.id;
+          if (id && ids.has(id)) {
             msg.status = status;
           }
         });
+      }
+    },
+
+    markMessageAsFailed: (
+      state,
+      action: PayloadAction<{ channelId: string; tempId: string }>,
+    ) => {
+      const { channelId, tempId } = action.payload;
+      const msgs = state.messagesByChat[channelId];
+      if (msgs) {
+        const msg = msgs.find((m) => m.id === tempId);
+        if (msg) {
+          msg.status = "failed";
+        }
       }
     },
 
@@ -299,6 +327,10 @@ const chatSlice = createSlice({
       .addCase(createGroupChat.fulfilled, (state, action) => {
         state.chats.unshift(action.payload);
         state.isChatLoading = false;
+        const exists = state.chats.some((c: any) => c.id === action.payload.id);
+        if (!exists) {
+          state.chats.unshift(action.payload);
+        }
         state.activeChatId = action.payload.id;
       })
       .addCase(createGroupChat.rejected, (state, action) => {
@@ -315,6 +347,7 @@ export const {
   updateMessagesStatus,
   clearMessages,
   setChatHistory,
+  markMessageAsFailed,
 } = chatSlice.actions;
 
 export default chatSlice.reducer;
