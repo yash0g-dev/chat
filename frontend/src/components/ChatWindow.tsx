@@ -8,12 +8,15 @@ import {
   PhoneOff,
   Check,
   CheckCheck,
+  XCircle,
+  LoaderCircle,
 } from "lucide-react";
 import {
   setChatHistory,
   receiveMessage,
   updateMessage,
   updateMessagesStatus,
+  markMessageAsFailed,
 } from "@/store/chatSlice";
 import { useSocket } from "@/providers/SocketProvider";
 import { api } from "@/lib/api";
@@ -196,8 +199,13 @@ export default function ChatWindow() {
       formData.append("content", text);
       formData.append("senderId", currentUser.id);
       formData.append("senderUsername", currentUser.username);
+      formData.append("senderAvatarUrl",currentUser.avatarUrl)
       files.forEach((f) => formData.append("attachments", f));
-      const res = await api.post("/chat/message", formData);
+
+      const res = await api.post("/chat/message", formData, {
+        timeout: 8000,
+      });
+
       dispatch(
         updateMessage({
           channelId: activeChatId,
@@ -207,11 +215,18 @@ export default function ChatWindow() {
       );
     } catch (err) {
       console.error(err);
+      dispatch(markMessageAsFailed({ channelId: activeChatId, tempId }));
     }
   };
 
   const renderMessageStatus = (status: string) => {
     switch (status) {
+      case "sending":
+        return (
+          <LoaderCircle size={14} className="text-gray-400 animate-spin " />
+        );
+      case "failed":
+        return <XCircle size={14} className="text-red-400" />;
       case "read":
         return <CheckCheck size={14} className="text-blue-400" />;
       case "delivered":
@@ -234,9 +249,10 @@ export default function ChatWindow() {
       <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
         {messages.map((msg: any, i: number) => (
           <MessageBubble
-            key={msg._id || msg.id || i}
+            key={ msg.id || msg._id || i}
             msg={msg}
             isMe={msg.sender?.id === currentUser?.id}
+            senderAvatar={msg.sender?.avatarUrl || null}
             isGroup={activeChat?.isGroup}
             renderMessageStatus={renderMessageStatus}
           />
