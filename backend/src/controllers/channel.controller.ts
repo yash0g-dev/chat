@@ -76,7 +76,6 @@ export const getMyChannels: AuthController = async (req, res) => {
       },
     });
 
-    console.log("channels", JSON.stringify(channels, null, 2));
     res.status(200).json({ success: true, channels });
   } catch (error) {
     throw new ApiError(500, "Failed to retrieve channels");
