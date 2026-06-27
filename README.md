@@ -3,7 +3,23 @@
 VibeChat is a modern, real-time communication platform designed for seamless messaging, group collaboration, and video conferencing. Built with a high-performance MERN stack (MongoDB, Express, React, Node.js), it offers a premium chat experience with support for media attachments and status tracking.
 
 ---
+## 🛠️ Technology Stack
 
+<p align="left">
+  <img src="https://img.shields.io/badge/Next.js-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" />
+  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" />
+  <img src="https://img.shields.io/badge/Redux-593D88?style=for-the-badge&logo=redux&logoColor=white" />
+  <img src="https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white" />
+  <br />
+  <img src="https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=node.js&logoColor=white" />
+  <img src="https://img.shields.io/badge/Socket.io-010101?style=for-the-badge&logo=socket.io&logoColor=white" />
+  <img src="https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white" />
+  <img src="https://img.shields.io/badge/PostgreSQL-316192?style=for-the-badge&logo=postgresql&logoColor=white" />
+  <img src="https://img.shields.io/badge/Cloudinary-3448C5?style=for-the-badge&logo=cloudinary&logoColor=white" />
+  <img src="https://img.shields.io/badge/LiveKit-000000?style=for-the-badge&logo=livekit&logoColor=white" />
+</p>
+
+---
 ## 🚀 Key Features
 
 * **Real-time Messaging:** Lightning-fast communication powered by Socket.io.
@@ -51,13 +67,14 @@ A modern, intuitive bubble-based messaging system with attachment support and Me
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/yourusername/vibechat.git](https://github.com/yourusername/vibechat.git)
+    git clone https://github.com/yash0g-dev/chat.git(https://github.com/yash0g-dev/vibechat.git)
     cd vibechat
     ```
 
 2.  **Install dependencies:**
     ```bash
     # Install server dependencies
+    cd backend 
     npm install
     
     # Install client dependencies
@@ -65,7 +82,8 @@ A modern, intuitive bubble-based messaging system with attachment support and Me
     ```
 
 3.  **Environment Variables:**
-    Create a `.env` file in the root directory and configure the following:
+### Backend
+    Create a `.env` file in the backend directory and configure the following:
     ```env
     PORT=5000
     MONGO_URI=your_mongodb_connection_string
@@ -76,14 +94,19 @@ A modern, intuitive bubble-based messaging system with attachment support and Me
     LIVEKIT_API_KEY=your_key
     LIVEKIT_API_SECRET=your_secret
     ```
+### Frontend
+    Create a `.env` file in the frontend directory and configure the following:
+    ```env
+    NEXT_PUBLIC_API_URL=http://localhost:5000
+    ```
 
 4.  **Run the Application:**
     ```bash
     # Start the backend
-    npm run dev
+    cd backend && npm run dev
     
     # Start the frontend
-    cd client && npm run dev
+    cd frontend && npm run dev
     ```
 
 ---
