@@ -2,9 +2,21 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { Send, MessageSquareOff, Video, PhoneOff } from "lucide-react";
-import { setChatHistory, receiveMessage } from "@/store/chatSlice";
+import {
+  MessageSquareOff,
+  Video,
+  PhoneOff,
+  Check,
+  CheckCheck,
+} from "lucide-react";
+import {
+  setChatHistory,
+  receiveMessage,
+  updateMessage,
+  updateMessagesStatus,
+} from "@/store/chatSlice";
 import { useSocket } from "@/providers/SocketProvider";
+import { api } from "@/lib/api";
 
 // LiveKit Imports
 import {
@@ -14,287 +26,269 @@ import {
 } from "@livekit/components-react";
 import "@livekit/components-styles";
 
+// Custom Components
+import MessageBubble from "./MessageBubble";
+import ChatInput from "./ChatInput";
+import CallPane from "./CallPane";
+
 export default function ChatWindow() {
   const dispatch = useDispatch();
   const socket = useSocket();
   const currentUser = useSelector((state: any) => state.auth.user);
+  const { activeChatId, chats, messagesByChat, hasFetchedHistory } =
+    useSelector((state: any) => state.chat);
 
-  const { activeChatId, chats, messagesByChat, hasFetchedHistory } = useSelector(
-    (state: any) => state.chat
-  );
-
-  const [text, setText] = useState("");
   const messageEndRef = useRef<HTMLDivElement>(null);
-
-  // --- VIDEO CALL STATES ---
   const [inCall, setInCall] = useState(false);
   const [videoToken, setVideoToken] = useState("");
 
-  const messages = activeChatId ? messagesByChat[activeChatId] || [] : [];
+  const rawMessages = activeChatId ? messagesByChat[activeChatId] || [] : [];
+  const messages = Array.from(
+    new Map(rawMessages.map((m: any) => [m._id || m.id, m])).values(),
+  );
   const isFetchingHistory = activeChatId && !hasFetchedHistory[activeChatId];
 
-  // --- DERIVE CHAT TITLE ---
+  // --- DERIVE CHAT METADATA ---
   const activeChat = chats.find((c: any) => c.id === activeChatId);
   let chatTitle = "Conversation";
+  let chatAvatar: string | null = null;
+  let isOnline = false;
+  let lastSeenAt: string | null = null;
+  let memberCount = 0;
 
   if (activeChat) {
     if (activeChat.isGroup && activeChat.name) {
       chatTitle = activeChat.name;
+      chatAvatar = activeChat.avatarUrl || null;
+      memberCount = activeChat.members?.length || 0;
     } else {
       const otherMember = activeChat.members?.find(
-        (m: any) => m.user.id !== currentUser?.id
+        (m: any) => m.user.id !== currentUser?.id,
       );
-      if (otherMember) chatTitle = otherMember.user.username;
+      if (otherMember) {
+        chatTitle = otherMember.user.displayName || otherMember.user.username;
+        chatAvatar = otherMember.user.avatarUrl;
+        isOnline = otherMember.user.isOnline;
+        lastSeenAt = otherMember.user.lastSeenAt;
+      }
     }
   }
 
-  // --- HANDLE HISTORY FETCHING ---
+  // --- SOCKET & HISTORY LOGIC ---
   useEffect(() => {
     if (!socket || !activeChatId) return;
 
     const handleHistory = (historyMessages: any[]) => {
-      const chatId = historyMessages.length ? historyMessages[0].channelId : activeChatId;
-      const orderedMessages = [...historyMessages].reverse();
-      
+      const chatId = historyMessages.length
+        ? historyMessages[0].channelId
+        : activeChatId;
       dispatch(
-        setChatHistory({
-          chatId: chatId,
-          messages: orderedMessages,
-        })
+        setChatHistory({ chatId, messages: [...historyMessages].reverse() }),
       );
     };
 
     socket.on("history", handleHistory);
-
-    if (!hasFetchedHistory[activeChatId]) {
+    if (!hasFetchedHistory[activeChatId])
       socket.emit("fetch_history", activeChatId);
-    }
 
     return () => {
       socket.off("history", handleHistory);
     };
   }, [socket, activeChatId, dispatch, hasFetchedHistory]);
 
-  // --- RESET CALL STATE ON CHAT CHANGE ---
+  // --- JOIN ROOM & LISTEN FOR NEW MESSAGES ---
+  useEffect(() => {
+    if (!socket || !activeChatId) return;
+    socket.emit("join_room", activeChatId);
+    const handleNewMessage = (msg: any) => dispatch(receiveMessage(msg));
+    socket.on("new_message", handleNewMessage);
+    return () => {
+      socket.off("new_message", handleNewMessage);
+    };
+  }, [socket, activeChatId, dispatch]);
+
+  // --- MARK READ & LISTEN FOR RECEIPTS ---
+  useEffect(() => {
+    if (!socket || !activeChatId || !currentUser) return;
+    const unread = messages
+      .filter(
+        (m: any) => m.sender?.id !== currentUser.id && m.status !== "read",
+      )
+      .map((m: any) => m._id || m.id);
+    if (unread.length > 0) {
+      socket.emit("mark_seen", {
+        messageIds: unread,
+        channelId: activeChatId,
+        userId: currentUser.id,
+      });
+      dispatch(
+        updateMessagesStatus({
+          channelId: activeChatId,
+          messageIds: unread,
+          status: "read",
+        }),
+      );
+    }
+    const handleRead = ({ messageIds, channelId }: any) => {
+      if (channelId === activeChatId)
+        dispatch(
+          updateMessagesStatus({ channelId, messageIds, status: "read" }),
+        );
+    };
+    socket.on("messages_read", handleRead);
+    return () => {
+      socket.off("messages_read", handleRead);
+    };
+  }, [messages, activeChatId, currentUser, socket, dispatch]);
+
+  // --- VIDEO CALL LOGIC ---
   useEffect(() => {
     setInCall(false);
     setVideoToken("");
   }, [activeChatId]);
 
-  // --- FETCH LIVEKIT TOKEN ---
   useEffect(() => {
     if (inCall && activeChatId && currentUser) {
       fetch(
-        `http://localhost:5000/api/get-livekit-token?room=${activeChatId}&identity=${currentUser.username}`
+        `http://localhost:5000/api/get-livekit-token?room=${activeChatId}&identity=${currentUser.username}`,
       )
         .then((res) => res.json())
-        .then((data) => {
-          setVideoToken(data.token);
-        })
-        .catch((err) => console.error("Failed to fetch LiveKit token", err));
-    } else {
-      setVideoToken("");
+        .then((data) => setVideoToken(data.token))
+        .catch(console.error);
     }
   }, [inCall, activeChatId, currentUser]);
 
-  // --- AUTO SCROLL ---
   useEffect(() => {
-    if (!isFetchingHistory) {
+    if (!isFetchingHistory)
       messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
   }, [messages, isFetchingHistory]);
 
   // --- SEND MESSAGE ---
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!text.trim() || !socket || !currentUser) return;
+  const handleSendMessage = async (text: string, files: File[]) => {
+    if (!currentUser) return;
+    const tempId = Date.now().toString();
+    const localAttachments = files.map((f) => ({
+      fileName: f.name,
+      url: URL.createObjectURL(f),
+      size: f.size,
+      type: f.type.startsWith("image/") ? "image" : "file",
+    }));
 
-    const newMessage = {
-      id: Date.now().toString(),
-      channelId: activeChatId,
-      content: text.trim(),
-      sender: {
-        id: currentUser.id,
-        username: currentUser.username,
-      },
-      createdAt: new Date().toISOString(),
-    };
+    dispatch(
+      receiveMessage({
+        id: tempId,
+        channelId: activeChatId,
+        content: text,
+        sender: {
+          id: currentUser.id,
+          username: currentUser.username,
+          avatarUrl: currentUser.avatarUrl,
+        },
+        attachments: localAttachments,
+        createdAt: new Date().toISOString(),
+        status: "sending",
+      }),
+    );
 
-    socket.emit("send_message", newMessage);
-    dispatch(receiveMessage(newMessage)); 
-    setText("");
+    try {
+      const formData = new FormData();
+      formData.append("channelId", activeChatId);
+      formData.append("content", text);
+      formData.append("senderId", currentUser.id);
+      formData.append("senderUsername", currentUser.username);
+      files.forEach((f) => formData.append("attachments", f));
+      const res = await api.post("/chat/message", formData);
+      dispatch(
+        updateMessage({
+          channelId: activeChatId,
+          tempId,
+          realMessage: res.data.data,
+        }),
+      );
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  // --- EMPTY STATE ---
-  if (!activeChatId) {
+  const renderMessageStatus = (status: string) => {
+    switch (status) {
+      case "read":
+        return <CheckCheck size={14} className="text-blue-400" />;
+      case "delivered":
+        return <CheckCheck size={14} className="text-gray-400" />;
+      default:
+        return <Check size={14} className="text-gray-400" />;
+    }
+  };
+
+  // --- RENDERING ---
+  if (!activeChatId)
     return (
-      <div className="hidden flex-1 flex-col items-center justify-center bg-gray-950 px-4 text-center sm:flex">
-        <div className="rounded-full bg-gray-900 border border-gray-800 p-6 mb-4 text-gray-500 shadow-xl shadow-blue-500/5">
-          <MessageSquareOff size={48} />
-        </div>
-        <h3 className="text-xl font-bold text-white tracking-tight">
-          No Conversation Selected
-        </h3>
-        <p className="text-sm text-gray-500 mt-2 max-w-sm">
-          Select a chat channel from your sidebar or start a new conversation.
-        </p>
+      <div className="hidden flex-1 items-center justify-center bg-[#030712] sm:flex">
+        <MessageSquareOff size={48} className="text-gray-800" />
       </div>
     );
-  }
 
-  // --- EXTRACTED MESSAGES & INPUT COMPONENT ---
-  // We extract this so we can easily render it alongside the video when in a call
   const ChatMessagesAndInput = (
     <div className="flex flex-1 flex-col min-h-0 bg-[#030712]">
-      {isFetchingHistory ? (
-        <div className="flex-1 flex flex-col items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent mb-4"></div>
-          <p className="text-sm text-gray-400 font-medium">Loading messages...</p>
-        </div>
-      ) : (
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {messages.map((msg: any, index: number) => {
-            const isMe = msg.sender?.username === currentUser?.username;
-
-            return (
-              <div
-                key={msg.id || msg._id || index}
-                className={`flex w-full ${isMe ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[75%] rounded-2xl px-5 py-3 text-sm shadow-md transition-all ${
-                    isMe
-                      ? "bg-blue-600 text-white rounded-tr-none font-medium"
-                      : "bg-gray-800 border border-gray-700/60 text-gray-100 rounded-tl-none"
-                  }`}
-                >
-                  {!isMe && activeChat?.isGroup && (
-                    <p className="text-xs font-bold text-indigo-400 mb-1 tracking-wide">
-                      @{msg.sender?.username}
-                    </p>
-                  )}
-                  <p className="leading-relaxed break-words">{msg.content}</p>
-                  {msg.createdAt && (
-                    <span
-                      className={`block text-[10px] mt-1.5 font-mono select-none ${
-                        isMe ? "text-blue-200 text-right" : "text-gray-400 text-left"
-                      }`}
-                    >
-                      {new Date(msg.createdAt).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-          <div ref={messageEndRef} />
-        </div>
-      )}
-
-      {/* INPUT AREA */}
-      <form
-        onSubmit={handleSendMessage}
-        className="shrink-0 p-4 bg-[#030712] border-t border-white/5 flex gap-3 items-center"
-      >
-        <input
-          type="text"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          disabled={isFetchingHistory}
-          placeholder={isFetchingHistory ? "Loading..." : `Message ${chatTitle}...`}
-          className="flex-1 rounded-xl bg-gray-900 border border-gray-800 px-5 py-3.5 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-all disabled:opacity-50"
-        />
-        <button
-          type="submit"
-          disabled={!text.trim() || isFetchingHistory}
-          className="group rounded-xl bg-blue-600 px-5 py-3.5 flex items-center justify-center shadow-lg shadow-blue-500/10 transition hover:bg-blue-500 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Send className="w-5 h-5 text-white group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-        </button>
-      </form>
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+        {messages.map((msg: any, i: number) => (
+          <MessageBubble
+            key={msg._id || msg.id || i}
+            msg={msg}
+            isMe={msg.sender?.id === currentUser?.id}
+            isGroup={activeChat?.isGroup}
+            renderMessageStatus={renderMessageStatus}
+          />
+        ))}
+        <div ref={messageEndRef} />
+      </div>
+      <ChatInput
+        onSendMessage={handleSendMessage}
+        isFetchingHistory={isFetchingHistory}
+        chatTitle={chatTitle}
+      />
     </div>
   );
 
-  // --- ACTIVE CHAT UI ---
   return (
     <div className="flex h-full flex-1 flex-col bg-[#030712]">
-      {/* HEADER */}
       <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 bg-white/5 px-6 backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center font-bold text-sm text-white shadow-lg shadow-blue-500/20">
-            {chatTitle.charAt(0).toUpperCase()}
-          </div>
+          {chatAvatar ? (
+            <img
+              src={chatAvatar}
+              className="h-10 w-10 rounded-full object-cover"
+            />
+          ) : (
+            <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white">
+              {chatTitle[0]}
+            </div>
+          )}
           <div>
             <h3 className="font-bold text-white text-sm">{chatTitle}</h3>
-            {activeChat?.isGroup && (
-              <p className="text-xs text-gray-400">
-                {activeChat.members?.length} members
-              </p>
-            )}
+            <p className="text-xs text-gray-400">
+              {isOnline ? "Online" : "Offline"}
+            </p>
           </div>
         </div>
-
-        {/* Call Action Button */}
         {!inCall && (
           <button
             onClick={() => setInCall(true)}
-            className="flex items-center gap-2 rounded-lg bg-emerald-600/20 px-4 py-2 text-sm font-semibold text-emerald-400 transition hover:bg-emerald-600/30"
+            className="flex items-center gap-2 rounded-lg bg-emerald-600/10 px-4 py-2 text-sm text-emerald-500 hover:bg-emerald-600/20"
           >
-            <Video size={16} />
-            Join Call
+            <Video size={18} /> Join
           </button>
         )}
       </div>
-
-      {/* DYNAMIC CONTENT AREA */}
       {inCall ? (
         <div className="flex flex-1 flex-col lg:flex-row min-h-0">
-          
-          {/* LEFT: Video Container */}
-          <div className="flex flex-[2] relative bg-black flex-col border-b lg:border-b-0 lg:border-r border-gray-800">
-            {videoToken ? (
-              <div className="w-full h-full relative">
-                <LiveKitRoom
-                  video={true}
-                  audio={true}
-                  token={videoToken}
-                  serverUrl="http://localhost:7880"
-                  connect={true}
-                  onDisconnected={() => setInCall(false)}
-                  className="w-full h-full"
-                >
-                  <VideoConference />
-                  <RoomAudioRenderer />
-                </LiveKitRoom>
-                
-                {/* Custom Hangup Button Overlay */}
-                <button
-                  onClick={() => setInCall(false)}
-                  className="absolute top-4 right-4 p-3 bg-red-600 hover:bg-red-500 rounded-full transition shadow-lg z-50 text-white"
-                  title="Leave Call"
-                >
-                  <PhoneOff size={20} />
-                </button>
-              </div>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent mb-4"></div>
-                <p className="text-sm text-gray-400">Connecting to room...</p>
-              </div>
-            )}
-          </div>
-
-          {/* RIGHT: Chat Container (Shrunk down when in call) */}
+          <CallPane videoToken={videoToken} onHangup={() => setInCall(false)} />
           <div className="flex flex-1 flex-col min-h-0 lg:max-w-md">
             {ChatMessagesAndInput}
           </div>
-
         </div>
       ) : (
-        /* NORMAL CHAT VIEW */
         ChatMessagesAndInput
       )}
     </div>

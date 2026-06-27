@@ -47,6 +47,8 @@ io.on("connection", (socket) => {
   console.log("user disconnected");
 });
 
+app.set("io", io);
+
 app.use("/api/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/channel", channelRoutes);

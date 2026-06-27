@@ -3,6 +3,10 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import prisma from "../config/prisma.config";
 import { ApiError } from "../utils/utils";
+import {
+  uploadToCloudinary,
+  deleteFromCloudinary,
+} from "../services/cloudinary.service";
 
 const cookieOptions = {
   httpOnly: true,
@@ -45,21 +49,21 @@ const setCookies = (
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   const { username, email, password } = req.body;
+
+  let avatarPublicId: string | undefined;
   try {
     if (!username || !email || !password) {
       throw new ApiError(400, "Please provide all the fields");
     }
-    const existingEmail = await prisma.user.findUnique({
-      where: { email },
-    });
+
+    const [existingEmail, existingUsername] = await Promise.all([
+      prisma.user.findUnique({ where: { email } }),
+      prisma.user.findUnique({ where: { username } }),
+    ]);
 
     if (existingEmail) {
       throw new ApiError(400, "Email already exists");
     }
-    const existingUsername = await prisma.user.findUnique({
-      where: { username },
-    });
-    console.log(existingUsername);
 
     if (existingUsername) {
       throw new ApiError(400, "Username already exists");
@@ -67,24 +71,44 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
+    let avatarUrl: string | undefined;
+
+    if (req.file) {
+      const upload = await uploadToCloudinary(req.file, "avatar");
+
+      avatarUrl = upload.secure_url;
+      avatarPublicId = upload.public_id;
+    }
+
     const user = await prisma.user.create({
       data: {
         username,
         email,
         passwordHash,
+        avatarUrl,
+        avatarPublicId,
       },
     });
+
     const token = generateTokens(user.id);
     setCookies(res, token.accessToken, token.refreshToken);
+
     res.status(201).json({
       message: "Registered successfully",
       user: {
         id: user.id,
         username: user.username,
         email: user.email,
+        avatarUrl: user.avatarUrl,
       },
     });
   } catch (error) {
+    // Clean up uploaded avatar if user creation fails
+    console.error(error);
+    if (req.file && avatarPublicId) {
+      await deleteFromCloudinary(avatarPublicId).catch(console.error);
+    }
+
     if (error instanceof ApiError) {
       throw error;
     }
@@ -96,31 +120,55 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
+
     if (!email || !password) {
       throw new ApiError(400, "Please provide all the fields");
     }
+
     const user = await prisma.user.findUnique({
       where: { email },
     });
+
     if (!user) {
       throw new ApiError(400, "Invalid credentials");
     }
+
     const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+
     if (!passwordMatch) {
       throw new ApiError(400, "Invalid credentials");
     }
-    const token = generateTokens(user.id);
+
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isOnline: true,
+      },
+    });
+
+    const token = generateTokens(updatedUser.id);
     setCookies(res, token.accessToken, token.refreshToken);
-    console.log("logged in ", email);
+    console.log(updatedUser);
     res.status(200).json({
       message: "Logged in successfully",
       user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
+        id: updatedUser.id,
+        username: updatedUser.username,
+        email: updatedUser.email,
+
+        avatarUrl: updatedUser.avatarUrl,
+        displayName: updatedUser.displayName,
+        bio: updatedUser.bio,
+
+        isOnline: updatedUser.isOnline,
+        lastSeenAt: updatedUser.lastSeenAt,
+
+        createdAt: updatedUser.createdAt,
       },
     });
   } catch (error) {
+    console.error(error); // <- fix typo (was "conosle")
+
     if (error instanceof ApiError) {
       throw error;
     }

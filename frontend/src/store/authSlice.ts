@@ -1,10 +1,22 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { api } from "../lib/api";
 
-interface User {
+export interface User {
   id: string;
-  username: string;
   email: string;
+  username: string;
+
+  displayName: string | null;
+  bio: string | null;
+
+  avatarUrl: string | null;
+  avatarPublicId: string | null;
+
+  isOnline: boolean;
+  lastSeenAt: string | null;
+
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface AuthState {
@@ -53,9 +65,9 @@ export const loginUser = createAsyncThunk(
 // 2. Register User
 export const registerUser = createAsyncThunk(
   "auth/register",
-  async (userData: Record<string, string>, { rejectWithValue }) => {
+  async (formData: FormData, { rejectWithValue }) => {
     try {
-      const response = await api.post("/auth/register", userData);
+      const response = await api.post("/auth/register", formData);
       // Backend should set the HTTP-only cookie and return the new user
       return response.data.user;
     } catch (error: any) {

@@ -1,7 +1,8 @@
 import ChatItem from "./ChatItem";
+import { MessageSquareOff } from "lucide-react";
 
 interface ChatListProps {
-  chats: any[]; // Replace with Chat[] type
+  chats: any[]; // Replace with your actual Chat[] type
   currentUserId?: string;
   activeChatId?: string;
   isLoading: boolean;
@@ -15,24 +16,43 @@ export default function ChatList({
   isLoading,
   onSelectChat,
 }: ChatListProps) {
+  // Premium Skeleton Loader for modern feel
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-8">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"></div>
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
+        {[...Array(6)].map((_, i) => (
+          <div
+            key={i}
+            className="w-full flex items-center gap-3 px-4 py-4 border-b border-gray-800/20 animate-pulse"
+          >
+            <div className="h-12 w-12 rounded-full bg-gray-800 shrink-0"></div>
+            <div className="flex-1 space-y-2.5 min-w-0">
+              <div className="h-4 bg-gray-800 rounded-md w-1/3"></div>
+              <div className="h-3 bg-gray-800 rounded-md w-3/4"></div>
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
 
+  // Enhanced Empty State
   if (chats.length === 0) {
     return (
-      <p className="text-center text-sm text-gray-500 mt-8">
-        No conversations found
-      </p>
+      <div className="flex flex-col items-center justify-center h-full px-6 text-center text-gray-500 mt-12">
+        <div className="h-12 w-12 bg-gray-900 rounded-full flex items-center justify-center mb-3">
+          <MessageSquareOff size={24} className="text-gray-600" />
+        </div>
+        <p className="text-sm font-medium text-gray-400">
+          No conversations yet
+        </p>
+        <p className="text-xs mt-1">Start a chat to break the ice.</p>
+      </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar">
+    <div className="flex-1 overflow-y-auto custom-scrollbar pt-1">
       {chats.map((chat) => (
         <ChatItem
           key={chat.id}

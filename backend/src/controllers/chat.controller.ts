@@ -2,6 +2,8 @@ import prisma from "../config/prisma.config.js";
 import { ApiError } from "../utils/utils.js";
 import type { AuthController } from "../middlewares/auth.middleware.ts";
 import { Message } from "../models/messages.model.ts";
+import { getDmKey } from "../utils/utils.js";
+import { uploadToCloudinary } from "../services/cloudinary.service.ts";
 
 export const getUserChats: AuthController = async (req, res) => {
   const userId = req.userId;
@@ -9,7 +11,6 @@ export const getUserChats: AuthController = async (req, res) => {
     if (!userId) {
       throw new ApiError(401, "Unauthorized");
     }
-    console.log("about to quuey", userId);
     const channels = await prisma.channel.findMany({
       where: {
         members: {
@@ -57,23 +58,15 @@ export const createChat: AuthController = async (req, res) => {
       throw new ApiError(400, "Missing user information");
     }
 
-    const existingChannel = await prisma.channel.findFirst({
+    if (myId === targetUserId) {
+      throw new ApiError(400, "You cannot create a chat with yourself.");
+    }
+
+    const dmKey = getDmKey(myId, targetUserId);
+
+    const existingChannel = await prisma.channel.findUnique({
       where: {
-        isGroup: false,
-        members: {
-          some: {
-            userId: myId,
-          },
-        },
-        AND: [
-          {
-            members: {
-              some: {
-                userId: targetUserId,
-              },
-            },
-          },
-        ],
+        dmKey,
       },
       include: {
         members: {
@@ -82,6 +75,9 @@ export const createChat: AuthController = async (req, res) => {
               select: {
                 id: true,
                 username: true,
+                avatarUrl: true,
+                isOnline: true,
+                lastSeenAt: true,
               },
             },
           },
@@ -89,7 +85,7 @@ export const createChat: AuthController = async (req, res) => {
       },
     });
 
-    if (existingChannel && existingChannel.members.length === 2) {
+    if (existingChannel) {
       return res.status(200).json({
         success: true,
         channel: existingChannel,
@@ -99,8 +95,8 @@ export const createChat: AuthController = async (req, res) => {
     const channel = await prisma.channel.create({
       data: {
         isGroup: false,
+        dmKey,
         ownerId: myId,
-
         members: {
           create: [
             {
@@ -112,7 +108,6 @@ export const createChat: AuthController = async (req, res) => {
           ],
         },
       },
-
       include: {
         members: {
           include: {
@@ -120,6 +115,9 @@ export const createChat: AuthController = async (req, res) => {
               select: {
                 id: true,
                 username: true,
+                avatarUrl: true,
+                isOnline: true,
+                lastSeenAt: true,
               },
             },
           },
@@ -127,7 +125,7 @@ export const createChat: AuthController = async (req, res) => {
       },
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       channel,
     });
@@ -135,6 +133,7 @@ export const createChat: AuthController = async (req, res) => {
     if (error instanceof ApiError) {
       throw error;
     }
+
     throw new ApiError(500, "Internal server error");
   }
 };
@@ -191,5 +190,105 @@ export const createGroupChannel: AuthController = async (req, res) => {
       throw error;
     }
     throw new ApiError(500, "Internal server error");
+  }
+};
+
+// Helper to map mimetype to Cloudinary config types
+const getFileType = (mimeType: string) => {
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.startsWith("audio/")) return "audio";
+  if (mimeType === "image/gif") return "gif";
+  return "file";
+};
+
+export const sendMessageWithAttachments: AuthController = async (req, res) => {
+  try {
+    const { channelId, content, senderId, senderUsername, senderAvatarUrl } =
+      req.body;
+
+    const files = req.files as Express.Multer.File[];
+
+    let uploadedAttachments = [];
+
+    // 1. Upload files to Cloudinary if they exist
+    if (files && files.length > 0) {
+      const uploadPromises = files.map(async (file) => {
+        const type = getFileType(file.mimetype);
+        console.log("file", file);
+        console.log("type", type);
+        const uploadResult = await uploadToCloudinary(file, type as any);
+
+        return {
+          fileName: file.originalname,
+          url: uploadResult.secure_url,
+          publicId: uploadResult.public_id,
+          size: file.size,
+          mimeType: file.mimetype,
+          type:
+            type === "audio" || type === "video"
+              ? "video"
+              : type === "image"
+                ? "image"
+                : type === "gif"
+                  ? "gif"
+                  : "file",
+        };
+      });
+
+      uploadedAttachments = await Promise.all(uploadPromises);
+    }
+
+    // 2. Save to MongoDB
+    const newMessage = new Message({
+      channelId,
+      content,
+      sender: {
+        id: senderId,
+        username: senderUsername,
+        avatarUrl: senderAvatarUrl,
+      },
+      attachments: uploadedAttachments,
+      status: "sent",
+    });
+
+    await newMessage.save();
+
+    // 3. Update Postgres Metrics
+    await prisma.channel.update({
+      where: { id: channelId },
+      data: {
+        lastMessage:
+          content || (uploadedAttachments.length ? "Attachment" : ""),
+        lastMessageAt: newMessage.createdAt,
+      },
+    });
+
+    await prisma.channelMember.update({
+      where: {
+        channelId_userId: {
+          channelId: channelId,
+          userId: senderId,
+        },
+      },
+      data: { lastReadAt: new Date() },
+    });
+
+    // 4. Broadcast via Socket.io
+    // Access the io instance we attached to the app earlier
+    const io = req.app.get("io");
+    if (io) {
+      io.to(channelId).emit("new_message", newMessage);
+    }
+
+    // 5. Respond to the sender
+    res.status(201).json({ success: true, data: newMessage });
+  } catch (error: any) {
+    console.error("Error sending message:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to send message",
+      error: error.message,
+    });
   }
 };

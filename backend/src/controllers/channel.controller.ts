@@ -47,20 +47,28 @@ export const getMyChannels: AuthController = async (req, res) => {
   try {
     const userId = req.userId;
 
-    // Find all memberships for this user, and include the channel details
-    const memberships = await prisma.channelMember.findMany({
-      where: { userId },
+    const channels = await prisma.channel.findMany({
+      where: {
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
+      orderBy: {
+        lastMessageAt: "desc",
+      },
       include: {
-        channel: {
-          include: {
-            members: {
+        members: {
+          select: {
+            user: {
               select: {
-                user: {
-                  select: {
-                    id: true,
-                    username: true,
-                  },
-                },
+                id: true,
+                username: true,
+                displayName: true,
+                avatarUrl: true,
+                isOnline: true,
+                lastSeenAt: true,
               },
             },
           },
@@ -68,9 +76,7 @@ export const getMyChannels: AuthController = async (req, res) => {
       },
     });
 
-    // Extract just the channel objects out of the membership array
-    const channels = memberships.map((m) => m.channel);
-
+    console.log("channels", JSON.stringify(channels, null, 2));
     res.status(200).json({ success: true, channels });
   } catch (error) {
     throw new ApiError(500, "Failed to retrieve channels");

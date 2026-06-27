@@ -8,3 +8,11 @@ export class ApiError extends Error {
     Error.captureStackTrace(this, this.constructor);
   }
 }
+
+export const getDmKey = (userA: string, userB: string) => {
+  if (userA === userB) {
+    throw new Error("Cannot create a chat with yourself.");
+  }
+
+  return [userA, userB].sort().join(":");
+};

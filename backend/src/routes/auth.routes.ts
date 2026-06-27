@@ -6,10 +6,15 @@ import {
   refreshToken,
   getMe,
 } from "../controllers/auth.controller";
+import multer from "multer";
 
 const router = Router();
 
-router.post("/register", register);
+const upload = multer({
+  storage: multer.memoryStorage(),
+});
+
+router.post("/register", upload.single("avatar"), register);
 router.post("/login", login);
 router.post("/logout", logout);
 router.post("/refreshToken", refreshToken);

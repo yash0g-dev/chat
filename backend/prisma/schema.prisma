@@ -22,7 +22,17 @@ model User {
   email String  @unique
   username  String @unique
   passwordHash String 
+
+  displayName String?
+  bio String?
+  isOnline Boolean @default(false)
+  avatarUrl String?
+  avatarPublicId String?
+  lastSeenAt DateTime?
+
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt @default(now())
+
   //Relationships 
   channelsOwned Channel[] @relation("ChannelOwner")
   channelMemberships ChannelMember[] 
@@ -50,6 +60,7 @@ model Channel {
   name String?
   isGroup Boolean @default(false)
   ownerId String
+  dmKey String? @unique
   lastMessage String?
   lastMessageAt DateTime?
   createdAt DateTime @default(now())

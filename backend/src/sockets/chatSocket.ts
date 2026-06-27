@@ -3,14 +3,13 @@ import { Message } from "../models/messages.model";
 import prisma from "../config/prisma.config.js";
 
 export const registerChatHandlers = (io: Server, socket: Socket) => {
-  // 1. JUST join the room. No database calls.
-  // This lets the user silently subscribe to all their chats on login.
+  // 1. Join room
   socket.on("join_room", (roomName: string) => {
     socket.join(roomName);
     console.log(`Socket ${socket.id} joined room ${roomName}`);
   });
 
-  // 2. NEW EVENT: Fetch history ONLY when requested
+  // 2. Fetch history
   socket.on("fetch_history", async (roomName: string) => {
     try {
       const history = await Message.find({ channelId: roomName })
@@ -23,27 +22,41 @@ export const registerChatHandlers = (io: Server, socket: Socket) => {
     }
   });
 
-  // 3. Send message handler
+  // 3. Send message handler WITH Acknowledgement Callback & Attachments
   socket.on(
     "send_message",
-    async (message: {
-      channelId: string;
-      sender: { id: string; username: string };
-      content: string;
-    }) => {
+    async (
+      message: {
+        channelId: string;
+        sender: { id: string; username: string; avatarUrl?: string };
+        content: string;
+        attachments?: any[]; // Added to support your new frontend attachments
+      },
+      callback?: (response: {
+        success: boolean;
+        data?: any;
+        error?: string;
+      }) => void,
+    ) => {
       try {
-        const newMessage = new Message(message);
-        await newMessage.save(); // Saves to MongoDB, generating _id and createdAt
+        // Create and save to MongoDB
+        const newMessage = new Message({
+          ...message,
+          status: "sent", // Explicitly set status to sent
+        });
+        await newMessage.save();
 
         // Update Postgres metrics
         await prisma.channel.update({
           where: { id: message.channelId },
           data: {
-            lastMessage: message.content,
+            lastMessage:
+              message.content || (message.attachments?.length ? "Photo" : ""),
             lastMessageAt: newMessage.createdAt,
           },
         });
 
+        // Update the sender's last read time
         await prisma.channelMember.update({
           where: {
             channelId_userId: {
@@ -56,16 +69,87 @@ export const registerChatHandlers = (io: Server, socket: Socket) => {
           },
         });
 
-        // CRITICAL FIX: Emit `newMessage` (the DB document), not the raw `message`
-        // This ensures the receiver gets the proper `createdAt` and `_id`
+        // Broadcast to receiver(s)
         socket.broadcast.to(message.channelId).emit("new_message", newMessage);
-      } catch (err) {
+
+        // Tell the sender's frontend that the message was successfully saved!
+        if (typeof callback === "function") {
+          callback({ success: true, data: newMessage });
+        }
+      } catch (err: any) {
         console.error("Failed to send message:", err);
+        if (typeof callback === "function") {
+          callback({ success: false, error: err.message });
+        }
       }
     },
   );
 
-  socket.on("disconnect", () => {
-    console.log("user disconnected");
+  // 4. NEW: Mark Messages as Seen
+  socket.on(
+    "mark_seen",
+    async ({
+      messageIds,
+      channelId,
+      userId,
+    }: {
+      messageIds: string[];
+      channelId: string;
+      userId: string;
+    }) => {
+      try {
+        // Update MongoDB messages to "read"
+        await Message.updateMany(
+          { _id: { $in: messageIds } },
+          { $set: { status: "read" } },
+        );
+
+        // Update Postgres lastReadAt for this user
+        await prisma.channelMember.update({
+          where: {
+            channelId_userId: {
+              channelId: channelId,
+              userId: userId,
+            },
+          },
+          data: {
+            lastReadAt: new Date(),
+          },
+        });
+
+        // Let the sender know their messages were read (so ticks turn blue)
+        socket.broadcast
+          .to(channelId)
+          .emit("messages_read", { messageIds, channelId, userId });
+      } catch (err) {
+        console.error("Failed to mark messages as seen:", err);
+      }
+    },
+  );
+
+  // 5. Disconnect (Set user offline)
+  socket.on("disconnect", async () => {
+    console.log(`Socket disconnected: ${socket.id}`);
+
+    // NOTE: To make this work, you must attach the userId to the socket object
+    // when they first connect (e.g., via auth middleware: socket.data.userId = user.id)
+    const userId = socket.data?.userId;
+
+    if (userId) {
+      try {
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            isOnline: false,
+            lastSeenAt: new Date(),
+          },
+        });
+
+        // Optional: Broadcast to everyone that this user went offline
+        // io.emit("user_status_change", { userId, isOnline: false, lastSeenAt: new Date() });
+      } catch (err) {
+        console.error("Failed to update user offline status:", err);
+      }
+    }
   });
 };

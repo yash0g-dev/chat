@@ -5,11 +5,12 @@ import { useDispatch } from "react-redux";
 import { AppDispatch } from "@/store/store";
 import { createDirectChat } from "@/store/chatSlice";
 import { api } from "@/lib/api";
-import { Search, X, Loader2 } from "lucide-react";
+import { Search, X, Loader2, UserPlus, UserCheck, MessageSquare } from "lucide-react";
 
 interface UserResult {
   id: string;
   username: string;
+  avatarUrl?: string; // Added to support profile images
 }
 
 interface NewChatModalProps {
@@ -23,6 +24,9 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
   const [results, setResults] = useState<UserResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  
+  // Local state to keep track of pending friend requests (since store isn't ready yet)
+  const [pendingRequests, setPendingRequests] = useState<Set<string>>(new Set());
 
   // Debounced API call to search users as you type
   useEffect(() => {
@@ -36,7 +40,6 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
       setError("");
 
       try {
-        // UPDATED: Using ?username= to match your backend controller exactly
         const response = await api.get(`/user/search?username=${searchQuery}`);
         setResults(response.data.users);
       } catch (err: any) {
@@ -60,6 +63,20 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
     }
   };
 
+  const handleSendFriendRequest = (e: React.MouseEvent, userId: string) => {
+    e.stopPropagation(); // Prevents the chat from opening when clicking this button
+    
+    // Toggle pending state mock
+    setPendingRequests(prev => {
+      const newSet = new Set(prev);
+      newSet.add(userId);
+      return newSet;
+    });
+
+    // TODO: Dispatch to your user/friend store once configured
+    console.log(`Friend request sent to user ${userId}`);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -71,9 +88,9 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition"
+            className="text-gray-400 hover:text-white transition bg-gray-800/50 hover:bg-gray-800 p-1.5 rounded-full"
           >
-            <X size={24} />
+            <X size={20} />
           </button>
         </div>
 
@@ -91,34 +108,78 @@ export default function NewChatModal({ isOpen, onClose }: NewChatModalProps) {
 
         {error && <p className="text-sm text-red-500 mb-4">{error}</p>}
 
-        <div className="max-h-64 overflow-y-auto custom-scrollbar">
+        <div className="max-h-72 overflow-y-auto custom-scrollbar">
           {isLoading ? (
-            <div className="flex justify-center py-6">
-              <Loader2 className="animate-spin text-blue-500" size={24} />
+            <div className="flex justify-center py-8">
+              <Loader2 className="animate-spin text-blue-500" size={28} />
             </div>
           ) : results.length > 0 ? (
-            <div className="space-y-1">
-              {results.map((user) => (
-                <button
-                  key={user.id}
-                  onClick={() => handleStartChat(user.id)}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-800 transition text-left"
-                >
-                  <div className="h-10 w-10 shrink-0 rounded-full bg-blue-600 flex items-center justify-center font-bold text-sm text-white uppercase">
-                    {user.username.charAt(0)}
+            <div className="space-y-1 pr-1">
+              {results.map((user) => {
+                const isPending = pendingRequests.has(user.id);
+
+                return (
+                  <div
+                    key={user.id}
+                    onClick={() => handleStartChat(user.id)}
+                    className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-gray-800 cursor-pointer transition-colors group"
+                  >
+                    {/* User Info (Left Side) */}
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 shrink-0 rounded-full border border-gray-700 bg-gray-800 flex items-center justify-center font-bold text-sm text-white uppercase overflow-hidden">
+                        {user.avatarUrl ? (
+                          <img 
+                            src={user.avatarUrl} 
+                            alt={user.username} 
+                            className="h-full w-full object-cover" 
+                          />
+                        ) : (
+                          user.username.charAt(0)
+                        )}
+                      </div>
+                      <span className="font-medium text-gray-200 text-sm group-hover:text-white transition-colors">
+                        {user.username}
+                      </span>
+                    </div>
+
+                    {/* Quick Actions (Right Side) */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => handleSendFriendRequest(e, user.id)}
+                        disabled={isPending}
+                        title={isPending ? "Request Sent" : "Add Friend"}
+                        className={`p-2 rounded-lg transition-colors flex items-center justify-center ${
+                          isPending 
+                            ? "bg-green-500/10 text-green-500 cursor-default" 
+                            : "bg-gray-800 text-gray-400 hover:bg-blue-600/20 hover:text-blue-500"
+                        }`}
+                      >
+                        {isPending ? <UserCheck size={18} /> : <UserPlus size={18} />}
+                      </button>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartChat(user.id);
+                        }}
+                        title="Send Message"
+                        className="p-2 rounded-lg bg-gray-800 text-gray-400 hover:bg-blue-600/20 hover:text-blue-500 transition-colors"
+                      >
+                        <MessageSquare size={18} />
+                      </button>
+                    </div>
                   </div>
-                  <span className="font-medium text-white text-sm">
-                    {user.username}
-                  </span>
-                </button>
-              ))}
+                );
+              })}
             </div>
           ) : searchQuery.trim() ? (
-            <p className="text-center text-sm text-gray-500 py-6">
-              No users found.
-            </p>
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <Search className="text-gray-600 mb-3" size={32} />
+              <p className="text-sm text-gray-400">No users found matching</p>
+              <p className="text-sm font-medium text-gray-300">"{searchQuery}"</p>
+            </div>
           ) : (
-            <p className="text-center text-sm text-gray-500 py-6">
+            <p className="text-center text-sm text-gray-500 py-10">
               Type a username to start searching.
             </p>
           )}

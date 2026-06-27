@@ -148,7 +148,9 @@ export default function HomePage() {
             </div>
 
             <div className="pt-4 flex justify-center">
-              <button className="group relative inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-4 text-lg font-bold text-white shadow-lg shadow-blue-500/25 ring-1 ring-white/20 transition-all hover:scale-105 hover:shadow-blue-500/40 hover:ring-white/40">
+              <button 
+                onClick={() => router.push("/dashboard")}
+              className="group relative inline-flex items-center gap-3 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-4 text-lg font-bold text-white shadow-lg shadow-blue-500/25 ring-1 ring-white/20 transition-all hover:scale-105 hover:shadow-blue-500/40 hover:ring-white/40">
                 <Zap className="h-5 w-5 text-blue-200" />
                 Enter Global Chat
                 <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />

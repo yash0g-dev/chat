@@ -1,36 +1,51 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import { api } from "../lib/api";
 
-interface Message {
-  id: string;
+export interface Attachment {
+  url: string;
+  fileName: string;
+  type: string;
+  size: number;
+}
+
+export interface Message {
+  id?: string; // Local temporary ID for optimistic UI
+  _id?: string; // MongoDB real ID
   channelId: string;
   content: string;
-
+  attachments?: Attachment[];
+  status?: "sending" | "sent" | "delivered" | "read";
   createdAt: string;
   sender: {
     id: string;
     username: string;
+    avatarUrl?: string | null;
+  };
+}
+
+export interface ChatMember {
+  lastReadAt?: string | null;
+  user: {
+    id: string;
+    username: string;
+    displayName?: string | null;
+    avatarUrl?: string | null;
+    isOnline: boolean;
+    lastSeenAt?: string | null;
   };
 }
 
 export interface Chat {
   id: string;
-  name?: string;
   isGroup: boolean;
-  updatedAt: string;
-
+  name?: string | null;
+  dmKey?: string | null;
+  createdAt: string;
+  updatedAt: string; // Added to match sorting logic
+  lastMessage?: string | null;
+  lastMessageAt?: string | null;
   unreadCount: number;
-
-  members: {
-    lastReadAt?: string;
-    user: {
-      id: string;
-      username: string;
-    };
-  }[];
-
-  lastMessage?: string;
-  lastMessageAt?: string;
+  members: ChatMember[];
 }
 
 interface ChatState {
@@ -58,8 +73,7 @@ export const fetchSidebarChats = createAsyncThunk(
   "chat/fetchSidebarChats",
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get("/chat/get-chats");
-      // Unwrap the 'channels' array from your backend response
+      const response = await api.get("/channel");
       return response.data.channels as Chat[];
     } catch (error: any) {
       return rejectWithValue(
@@ -74,9 +88,7 @@ export const createDirectChat = createAsyncThunk(
   "chat/createDirectChat",
   async (targetUserId: string, { rejectWithValue }) => {
     try {
-      // Hits the standard '/' route with the payload your controller expects
       const response = await api.post("/chat/create-chat", { targetUserId });
-
       return response.data.channel as Chat;
     } catch (error: any) {
       return rejectWithValue(
@@ -91,7 +103,6 @@ export const createGroupChat = createAsyncThunk(
   "chat/createGroupChat",
   async (payload: { name: string; members: string[] }, { rejectWithValue }) => {
     try {
-      // Hits the '/group' route you just made
       const response = await api.post("/chat/create-group-chat", payload);
       return response.data.channel as Chat;
     } catch (error: any) {
@@ -102,14 +113,13 @@ export const createGroupChat = createAsyncThunk(
   },
 );
 
-// Note: If you are using WebSockets (Socket.io) to fetch history from Mongoose,
-// you actually don't need this REST thunk! But I'll leave it in case you built a REST route for it.
+// 4. Fetch Chat Messages (REST fallback if not using sockets for history)
 export const fetchChatMessages = createAsyncThunk(
   "chat/fetchChatMessages",
   async (chatId: string, { rejectWithValue }) => {
     try {
       const response = await api.get(`/chats/${chatId}/messages`);
-      return response.data.messages as Message[]; // Make sure to unwrap this too!
+      return response.data.messages as Message[];
     } catch (error: any) {
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch messages",
@@ -133,29 +143,94 @@ const chatSlice = createSlice({
         state.messagesByChat[chatId] = [];
       }
 
-      state.messagesByChat[chatId].push(message);
+      const existingIndex = state.messagesByChat[chatId].findIndex(
+        (m) =>
+          (m._id && m._id === message._id) || (m.id && m.id === message.id),
+      );
 
+      if (existingIndex === -1) {
+        // If it doesn't exist, push it
+        state.messagesByChat[chatId].push(message);
+      } else {
+        // If it DOES exist, just update the existing one (good for handling status changes)
+        state.messagesByChat[chatId][existingIndex] = {
+          ...state.messagesByChat[chatId][existingIndex],
+          ...message,
+        };
+      }
+
+      // Update sidebar chat details
       const chat = state.chats.find((c) => c.id === chatId);
-
       if (!chat) return;
 
-      chat.lastMessage = message.content;
+      chat.lastMessage =
+        message.content ||
+        (message.attachments?.length ? "📷 Photo" : "New message");
       chat.lastMessageAt = message.createdAt;
       chat.updatedAt = message.createdAt;
 
-      if (state.activeChatId !== chatId) {
+      // Only increment unread if chat isn't active AND message wasn't sent by me
+      if (state.activeChatId !== chatId && message.status !== "sending") {
         chat.unreadCount++;
       }
 
+      // Bubble chat to top
       state.chats.sort(
         (a, b) =>
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
       );
     },
+    // NEW: Replace temporary optimistic message with real message from server
+    updateMessage: (
+      state,
+      action: PayloadAction<{
+        channelId: string;
+        tempId: string;
+        realMessage: Message;
+      }>,
+    ) => {
+      const { channelId, tempId, realMessage } = action.payload;
+      const messages = state.messagesByChat[channelId];
+      if (messages) {
+        const index = messages.findIndex(
+          (m) => m.id === tempId || m._id === tempId,
+        );
+        if (index !== -1) {
+          messages[index] = {
+            ...messages[index],
+            ...realMessage,
+            status: "sent",
+          };
+        }
+      }
+    },
+
+    // NEW: Update read/delivered status for a batch of messages
+    updateMessagesStatus: (
+      state,
+      action: PayloadAction<{
+        channelId: string;
+        messageIds: string[];
+        status: Message["status"];
+      }>,
+    ) => {
+      const { channelId, messageIds, status } = action.payload;
+      const messages = state.messagesByChat[channelId];
+      if (messages) {
+        messages.forEach((msg) => {
+          // Check against both MongoDB _id and temporary id
+          const idToCheck = msg._id || msg.id;
+          if (idToCheck && messageIds.includes(idToCheck)) {
+            msg.status = status;
+          }
+        });
+      }
+    },
+
     clearMessages: (state) => {
       state.messagesByChat = {};
     },
-    // Adding this back in case you use Socket.io for history loading
+
     setChatHistory: (
       state,
       action: PayloadAction<{ chatId: string; messages: Message[] }>,
@@ -204,13 +279,11 @@ const chatSlice = createSlice({
         state.error = null;
       })
       .addCase(createDirectChat.fulfilled, (state, action) => {
-        // Only unshift if it doesn't already exist (in case backend returns existing chat)
         const exists = state.chats.find((c) => c.id === action.payload.id);
         if (!exists) {
           state.chats.unshift(action.payload);
         }
         state.isChatLoading = false;
-        // Optionally auto-open the newly created chat
         state.activeChatId = action.payload.id;
       })
       .addCase(createDirectChat.rejected, (state, action) => {
@@ -235,6 +308,13 @@ const chatSlice = createSlice({
   },
 });
 
-export const { setActiveChat, receiveMessage, clearMessages, setChatHistory } =
-  chatSlice.actions;
+export const {
+  setActiveChat,
+  receiveMessage,
+  updateMessage,
+  updateMessagesStatus,
+  clearMessages,
+  setChatHistory,
+} = chatSlice.actions;
+
 export default chatSlice.reducer;
