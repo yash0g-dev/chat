@@ -16,7 +16,12 @@ export const getMe: AuthController = async (req, res) => {
       select: {
         id: true,
         username: true,
+        displayName: true,
+        bio: true,
         email: true,
+        avatarUrl: true,
+        isOnline: true,
+        lastSeenAt: true,
         createdAt: true,
       },
     });
@@ -53,6 +58,10 @@ export const searchUsers: AuthController = async (req, res) => {
       select: {
         id: true,
         username: true,
+        displayName: true,
+        bio: true,
+        email: true,
+        avatarUrl: true,
       },
       take: 10,
     });
