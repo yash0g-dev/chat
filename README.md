@@ -25,6 +25,7 @@ VibeChat is a modern, real-time communication platform designed for seamless mes
 * **Real-time Messaging:** Lightning-fast communication powered by Socket.io.
 * **Media Support:** Send images, videos, and files directly in your chats.
 * **Video Conferencing:** Integrated LiveKit support for high-quality group video calls.
+* **Screen Sharing:** Integrated LiveKit support for high-quality group screen sharing .
 * **Read Receipts:** Real-time message status (Sent, Delivered, Seen).
 * **Modern UI:** A clean, responsive dark-mode interface with smooth gradients.
 * **Presence Tracking:** Real-time online/offline status indicators.
@@ -98,6 +99,7 @@ A modern, intuitive bubble-based messaging system with attachment support and Me
     Create a `.env` file in the frontend directory and configure the following:
     ```env
     NEXT_PUBLIC_API_URL=http://localhost:5000
+    NEXT_PUBLIC_LIVEKIT_API_KEY=your_key
     ```
 
 4.  **Run the Application:**
