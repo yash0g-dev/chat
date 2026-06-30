@@ -154,7 +154,7 @@ export default function ChatWindow() {
     if (inCall && activeChatId && currentUser) {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL;
       fetch(
-        `${backendUrl}/video-token?room=${activeChatId}&identity=${currentUser.id}`,
+        `${backendUrl}/api/get-livekit-token?room=${activeChatId}&identity=${currentUser.id}`,
       )
         .then((res) => res.json())
         .then((data) => setVideoToken(data.token))
