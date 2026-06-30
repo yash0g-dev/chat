@@ -19,6 +19,7 @@ dotenv.config();
 
 const app = express();
 
+console.log(process.env.FRONTEND_URL);
 const allowedOrigins = [
   "http://localhost:3000",
   process.env.FRONTEND_URL,
