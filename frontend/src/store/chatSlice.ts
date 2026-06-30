@@ -184,7 +184,7 @@ const chatSlice = createSlice({
         message.content ||
         (message.attachments?.length ? "📷 Photo" : "New message");
       chat.lastMessageAt = message.createdAt;
-      chat.updatedAt = message.createdAt;
+     
 
       // Only increment unread if chat isn't active AND message wasn't sent by me
       if (state.activeChatId !== chatId && message.status !== "sending") {
