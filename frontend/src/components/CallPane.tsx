@@ -12,8 +12,8 @@ import {
   MicOff,
   Video as VideoIcon,
   VideoOff,
-  MonitorUp,
-  MonitorDown,
+  ScreenShare,
+  ScreenShareOff,
 } from "lucide-react";
 
 // ⚠️ REMINDER: Move `import "@livekit/components-styles";` to your layout.tsx / _app.tsx
@@ -145,9 +145,9 @@ function CustomControlBar({ onHangup }: { onHangup: () => void }) {
         title={isScreenShareEnabled ? "Stop Sharing" : "Share Screen"}
       >
         {isScreenShareEnabled ? (
-          <MonitorOff size={20} />
+          <ScreenShareOff size={20} />
         ) : (
-          <MonitorUp size={20} />
+          <ScreenShare size={20} />
         )}
       </button>
 
