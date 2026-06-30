@@ -3,7 +3,10 @@ import {
   RoomAudioRenderer,
   ParticipantTile,
   useTracks,
+  AudioVisualizer,
   useLocalParticipant,
+  StartAudio,
+  useTrackToggle,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import {
@@ -33,6 +36,8 @@ export default function CallPane({ videoToken, onHangup }: CallPaneProps) {
     );
   }
 
+  // NOTICE: I completely removed the useLocalParticipant hook from up here!
+
   return (
     <div className="flex-1 relative bg-[#09090b] flex flex-col min-h-[400px]">
       <LiveKitRoom
@@ -46,9 +51,16 @@ export default function CallPane({ videoToken, onHangup }: CallPaneProps) {
       >
         <CustomVideoGrid />
 
+        {/* The Diagnostic tool is now safely INSIDE the room context */}
+        <MicDiagnostic />
+
         <CustomControlBar onHangup={onHangup} />
 
         <RoomAudioRenderer />
+        <StartAudio
+          label="Click to allow audio playback"
+          className="absolute top-4 right-4 z-50 bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold shadow-lg"
+        />
       </LiveKitRoom>
     </div>
   );
@@ -89,30 +101,24 @@ function CustomVideoGrid() {
 
 // Custom Controls ---
 function CustomControlBar({ onHangup }: { onHangup: () => void }) {
-  const {
-    isMicrophoneEnabled,
-    isCameraEnabled,
-    isScreenShareEnabled,
-    localParticipant,
-  } = useLocalParticipant();
+  const { toggle: toggleAudio, enabled: isMicrophoneEnabled } = useTrackToggle({
+    source: Track.Source.Microphone,
+  });
 
-  const toggleAudio = async () => {
-    await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
-  };
+  const { toggle: toggleVideo, enabled: isCameraEnabled } = useTrackToggle({
+    source: Track.Source.Camera,
+  });
 
-  const toggleVideo = async () => {
-    await localParticipant.setCameraEnabled(!isCameraEnabled);
-  };
-
-  const toggleScreenShare = async () => {
-    await localParticipant.setScreenShareEnabled(!isScreenShareEnabled);
-  };
+  const { toggle: toggleScreenShare, enabled: isScreenShareEnabled } =
+    useTrackToggle({
+      source: Track.Source.ScreenShare,
+    });
 
   return (
     <div className="h-16 bg-zinc-900/80 border border-white/5 backdrop-blur-md rounded-2xl flex items-center justify-center gap-4 px-6 max-w-md mx-auto w-full transition-all shrink-0">
-      {/* Mic Action */}
+      {/* Mic Action - FIX: Wrap in arrow function */}
       <button
-        onClick={toggleAudio}
+        onClick={() => toggleAudio()}
         className={`p-3 rounded-xl transition ${
           isMicrophoneEnabled
             ? "bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
@@ -122,9 +128,9 @@ function CustomControlBar({ onHangup }: { onHangup: () => void }) {
         {isMicrophoneEnabled ? <Mic size={20} /> : <MicOff size={20} />}
       </button>
 
-      {/* Camera Action */}
+      {/* Camera Action - FIX: Wrap in arrow function */}
       <button
-        onClick={toggleVideo}
+        onClick={() => toggleVideo()}
         className={`p-3 rounded-xl transition ${
           isCameraEnabled
             ? "bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
@@ -134,12 +140,12 @@ function CustomControlBar({ onHangup }: { onHangup: () => void }) {
         {isCameraEnabled ? <VideoIcon size={20} /> : <VideoOff size={20} />}
       </button>
 
-      {/* Screen Share Action */}
+      {/* Screen Share Action - FIX: Wrap in arrow function */}
       <button
-        onClick={toggleScreenShare}
+        onClick={() => toggleScreenShare()}
         className={`p-3 rounded-xl transition ${
           isScreenShareEnabled
-            ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30" // Makes it glow green when sharing!
+            ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
             : "bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
         }`}
         title={isScreenShareEnabled ? "Stop Sharing" : "Share Screen"}
@@ -153,12 +159,28 @@ function CustomControlBar({ onHangup }: { onHangup: () => void }) {
 
       {/* Separate Leave Action */}
       <button
-        onClick={onHangup}
+        onClick={onHangup} // This one is fine as-is!
         className="p-3 bg-red-600 hover:bg-red-500 text-white rounded-xl transition shadow-md ml-4"
         title="Leave Room"
       >
         <PhoneOff size={20} />
       </button>
+    </div>
+  );
+}
+
+// --- Diagnostic Tool (Safely created here, used inside LiveKitRoom) ---
+function MicDiagnostic() {
+  const { localParticipant } = useLocalParticipant();
+  const micTrack = localParticipant?.getTrackPublication(
+    Track.Source.Microphone
+  );
+
+  if (!micTrack) return null;
+
+  return (
+    <div className="h-12 w-full max-w-md mx-auto bg-zinc-900 rounded-lg overflow-hidden mt-4 mb-4">
+      <AudioVisualizer trackRef={micTrack} />
     </div>
   );
 }
