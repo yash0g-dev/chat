@@ -20,7 +20,7 @@ export const SocketProvider = ({ children }: { children: React.ReactNode }) => {
     // Only connect if we have a resolved, authenticated user
     if (isLoading || !user) return;
 
-    const socketInstance = io("http://localhost:5000", {
+    const socketInstance = io(process.env.NEXT_PUBLIC_API_URL, {
       withCredentials: true,
     });
 
