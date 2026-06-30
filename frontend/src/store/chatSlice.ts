@@ -40,8 +40,8 @@ export interface Chat {
   isGroup: boolean;
   name?: string | null;
   dmKey?: string | null;
+  ownerId?: string | null;
   createdAt: string;
-  updatedAt: string; // Added to match sorting logic
   lastMessage?: string | null;
   lastMessageAt?: string | null;
   unreadCount: number;
@@ -114,9 +114,13 @@ export const createGroupChat = createAsyncThunk(
         id: rawChannel.id,
         isGroup: rawChannel.isGroup,
         name: rawChannel.name,
+        dmKey: rawChannel.dmKey,
         ownerId: rawChannel.ownerId,
-        members: rawChannel.members,
         createdAt: rawChannel.createdAt,
+        lastMessage: rawChannel.lastMessage,
+        lastMessageAt: rawChannel.lastMessageAt,
+        unreadCount: 0,
+        members: rawChannel.members,
       };
     } catch (err: any) {
       return rejectWithValue(
@@ -190,7 +194,8 @@ const chatSlice = createSlice({
       // Bubble chat to top
       state.chats.sort(
         (a, b) =>
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+          new Date(b.lastMessageAt ?? b.createdAt).getTime() -
+          new Date(a.lastMessageAt ?? a.createdAt).getTime(),
       );
     },
     // NEW: Replace temporary optimistic message with real message from server
@@ -325,12 +330,14 @@ const chatSlice = createSlice({
         state.error = null;
       })
       .addCase(createGroupChat.fulfilled, (state, action) => {
-        state.chats.unshift(action.payload);
         state.isChatLoading = false;
-        const exists = state.chats.some((c: any) => c.id === action.payload.id);
+
+        const exists = state.chats.some((c) => c.id === action.payload.id);
+
         if (!exists) {
           state.chats.unshift(action.payload);
         }
+
         state.activeChatId = action.payload.id;
       })
       .addCase(createGroupChat.rejected, (state, action) => {

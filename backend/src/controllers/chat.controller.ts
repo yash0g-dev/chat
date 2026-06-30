@@ -174,6 +174,9 @@ export const createGroupChannel: AuthController = async (req, res) => {
               select: {
                 id: true,
                 username: true,
+                avatarUrl: true,
+                isOnline: true,
+                lastSeenAt: true,
               },
             },
           },
