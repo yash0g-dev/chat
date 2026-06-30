@@ -19,13 +19,11 @@ dotenv.config();
 
 const app = express();
 
-console.log("Frontend url",process.env.FRONTEND_URL);
 const allowedOrigins = [
   "http://localhost:3000",
   process.env.FRONTEND_URL,
 ].filter(Boolean);
 
-console.log("allowed origins", allowedOrigins);
 const corsOptions = {
   origin: (
     origin: string | undefined,

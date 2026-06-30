@@ -8,10 +8,12 @@ import {
   deleteFromCloudinary,
 } from "../services/cloudinary.service";
 
+const isProd = process.env.NODE_ENV === "production";
+
 const cookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "strict" as const,
+  secure: isProd,
+  sameSite: isProd ? ("none" as const) : ("lax" as const),
 };
 
 function generateTokens(userId: string) {
