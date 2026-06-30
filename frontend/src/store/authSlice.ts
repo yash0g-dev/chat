@@ -114,7 +114,7 @@ export const fetchMyProfile = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       const response = await api.get("/auth/profile");
-      return response.data.profile;
+      return response.data.user;
     } catch (error: any) {
       return rejectWithValue(
         error.response?.data?.message || "Failed to fetch profile",
@@ -201,7 +201,7 @@ const authSlice = createSlice({
       // --- fetchMyProfile ---
       .addCase(fetchMyProfile.fulfilled, (state, action) => {
         if (state.user) {
-          state.user.profile = action.payload;
+          state.user = action.payload;
         }
       });
   },
