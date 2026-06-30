@@ -1,10 +1,11 @@
 import ChatItem from "./ChatItem";
 import { MessageSquareOff } from "lucide-react";
+import type { Chat } from "@/store/chatSlice";
 
 interface ChatListProps {
-  chats: any[]; // Replace with your actual Chat[] type
+  chats: Chat[];
   currentUserId?: string;
-  activeChatId?: string;
+  activeChatId?: string | null;
   isLoading: boolean;
   onSelectChat: (chatId: string) => void;
 }
@@ -16,7 +17,7 @@ export default function ChatList({
   isLoading,
   onSelectChat,
 }: ChatListProps) {
-  // Premium Skeleton Loader for modern feel
+  //  Skeleton Loader
   if (isLoading) {
     return (
       <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -36,7 +37,7 @@ export default function ChatList({
     );
   }
 
-  // Enhanced Empty State
+  //  Empty State
   if (chats.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full px-6 text-center text-gray-500 mt-12">
