@@ -13,7 +13,7 @@ router.get("/", async (req, res) => {
       database: "connected",
       uptime: process.uptime(),
       messageCount,
-      timestamp: Date.now().toISOString(),
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
     res.status(500).json({
