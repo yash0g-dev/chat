@@ -11,6 +11,7 @@ import { authRoutes } from "./src/routes/auth.routes";
 import { userRoutes } from "./src/routes/user.route";
 import { channelRoutes } from "./src/routes/channel.route";
 import { friendshipRoutes } from "./src/routes/friends.routes";
+import { healthRoutes } from "./src/routes/health.route";
 import cookieParser from "cookie-parser";
 import { socketAuthMiddleware } from "./src/middlewares/socket.middleware";
 import { chatRoutes } from "./src/routes/chat.routes";
@@ -70,6 +71,7 @@ app.use("/api/channel", channelRoutes);
 app.use("/api/friendship", friendshipRoutes);
 app.use("/api/chat", chatRoutes);
 app.get("/api/get-livekit-token", liveKitToken);
+app.use("/api/health", healthRoutes);
 
 app.use(errorHandler);
 
