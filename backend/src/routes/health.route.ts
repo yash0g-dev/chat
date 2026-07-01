@@ -20,7 +20,7 @@ router.get("/", async (req, res) => {
       status: "unhealthy",
       database: "disconnected",
       message: error.message,
-      timestamp: Date.now().toISOString(),
+      timestamp: new Date().toISOString(),
     });
   }
 });
