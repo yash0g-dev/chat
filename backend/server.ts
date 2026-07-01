@@ -71,7 +71,7 @@ app.use("/api/channel", channelRoutes);
 app.use("/api/friendship", friendshipRoutes);
 app.use("/api/chat", chatRoutes);
 app.get("/api/get-livekit-token", liveKitToken);
-app.use("/api/health", healthRoutes);
+app.use("/health", healthRoutes);
 
 app.use(errorHandler);
 
